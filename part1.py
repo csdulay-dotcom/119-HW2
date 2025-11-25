@@ -1,3 +1,5 @@
+#Used ChatGPT to help with some parts of this HW
+
 """
 Part 1: MapReduce
 
@@ -34,6 +36,7 @@ sc = spark.sparkContext
 # Additional imports
 import pytest
 
+
 """
 ===== Questions 1-3: Generalized Map and Reduce =====
 
@@ -69,8 +72,7 @@ def general_map(rdd, f):
     output: an RDD with values of type (k2, v2)
     """
     # TODO
-    raise NotImplementedError
-    # ^^^^ remove TODO and raise NotImplementedError when implemented :)
+    return rdd.flatMap(lambda kv: f(kv[0], kv[1]))
 
 # Remove skip when implemented!
 @pytest.mark.skip
@@ -118,7 +120,7 @@ def general_reduce(rdd, f):
         and just one single value per key
     """
     # TODO
-    raise NotImplementedError
+    return rdd.reduceByKey(f)
 
 # Remove skip when implemented!
 @pytest.mark.skip
@@ -155,7 +157,9 @@ def q2():
 and keys for Reduce be different might be useful.
 
 === ANSWER Q3 BELOW ===
-
+It might be useful to have the keys for Map and keys for Reduce be different because what if you want to organize
+the data. By having different keys where Reduce could group the keys by their first letter and have the Map keys use the whole word as keys which would
+make aggregating more flexible.
 === END OF Q3 ANSWER ===
 """
 
@@ -170,18 +174,25 @@ set of integers between 1 and 1 million (inclusive).
 4. First, we need a function that loads the input.
 """
 
-def load_input():
+def load_input(N=None, P=None):
     # Return a parallelized RDD with the integers between 1 and 1,000,000
     # This will be referred to in the following questions.
     # TODO
-    raise NotImplementedError
+    if N is None:
+        N = 1000000
+    if P is None:
+        rdd = sc.parallelize(range(1,N + 1))
+    else:
+        rdd = sc.parallelize(range(1,N + 1), P)
+    return rdd
 
 def q4(rdd):
     # Input: the RDD from load_input
     # Output: the length of the dataset.
     # You may use general_map or general_reduce here if you like (but you don't have to) to get the total count.
     # TODO
-    raise NotImplementedError
+    rdd = load_input(100000)
+    return rdd.count()
 
 """
 Now use the general_map and general_reduce functions to answer the following questions.
@@ -195,7 +206,17 @@ def q5(rdd):
     # Input: the RDD from Q4
     # Output: the average value
     # TODO
-    raise NotImplementedError
+
+    # Maps the data to counts and values
+    mapped_data  = general_map(rdd.map(lambda x: (None, x)), lambda k, v: [(None, (1, v))])
+
+    #Reduces data by adding up the counts and values
+    reduced_data = general_reduce(mapped_data, lambda s, z: (s[0] + z[0], s[1] + z[1]))
+
+    #Collects the result from reduced_data
+    total_count, total_sum = reduced_data.collect()[0][1]
+    
+    return total_sum/total_count
 
 """
 6. Among the numbers from 1 to 1 million, when written out,
@@ -214,7 +235,20 @@ def q6(rdd):
     # Input: the RDD from Q4
     # Output: a tuple (most common digit, most common frequency, least common digit, least common frequency)
     # TODO
-    raise NotImplementedError
+    
+    #Map data
+    mapped_data = general_map(rdd.map(lambda x: (None, x)), lambda k, v: [(d, 1) for d in str(v)])
+
+    #Reduces data to add them together
+    reduce_data = general_reduce(mapped_data, lambda s, z: s + z)
+
+    #Creates a tuple
+    digits = dict(reduce_data.collect())
+
+    most_common_digit = max(digits, key = digits.get)
+    least_common_digit = min(digits, key = digits.get)
+
+    return (most_common_digit, digits[most_common_digit], least_common_digit, digits[least_common_digit])
 
 """
 7. Among the numbers from 1 to 1 million, written out in English, which letter is most common?
@@ -254,11 +288,80 @@ Notes:
 
 # *** Define helper function(s) here ***
 
+
+def number_to_english(n):
+    #If n = 0 then it just returns zero
+    if n == 0:
+        return "zero"
+    
+    #Since our data goes up to one million and not like ninety-nine thousand, if n = 1,000,000 the output is one million separately
+    if n == 1_000_000:
+        return "one million"
+
+    # Creates preexisting words that will be combined together later to create the appropriate number to English work
+    units = ["", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine"]
+    teens = ["ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen", "nineteen"]
+    tens = ["", "", "twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety"]
+
+    parts = []
+
+    #Handles the millions which will be used for q8b
+    if n >= 1_000_000:
+        millions = n // 1_000_000
+        parts.append(number_to_english(millions) + " million")
+        n %= 1_000_000
+        if n > 0 and n < 100:
+            parts.append("and")
+
+    #This if line calculates for numbers that is 1,000 and above because it adds thousand at the end
+    if n >= 1000:
+        thousands = n // 1000
+        parts.append(number_to_english(thousands) + " thousand")
+        n %= 1000
+        if n > 0 and n < 100:
+            parts.append("and")
+
+    #This if line calculates for numbers that is 100 and above because it adds hundred at the end
+    if n >= 100:
+        hundreds = n // 100
+        parts.append(units[hundreds] + " hundred")
+        n %= 100
+        if n > 0:
+            parts.append("and")
+
+    #This if line calculates for numbers that is 20 and above because it adds like the twenty, thirty, etc. in the beginning
+    if n >= 20:
+        parts.append(tens[n // 10])
+        n %= 10
+        if n > 0:
+            parts[-1] += "-" + units[n]
+
+    #For when n is equal or more than 10 as they end with -teens
+    elif n >= 10:
+        parts.append(teens[n - 10])
+
+    #For single digits
+    elif n > 0:
+        parts.append(units[n])
+
+    return " ".join(parts).lower()
+
+
 def q7(rdd):
     # Input: the RDD from Q4
     # Output: a tulpe (most common char, most common frequency, least common char, least common frequency)
     # TODO
-    raise NotImplementedError
+   english_data = rdd.map(lambda x: number_to_english(x))
+
+   letters_rdd = general_map(english_data.map(lambda word: (None, word)), lambda k, v: [(ch, 1) for ch in v if ch.isalpha()])
+
+   counted_letters = general_reduce(letters_rdd, lambda a, b: a + b)
+
+   dic_letters = dict(counted_letters.collect())
+   most_common_char = max(dic_letters, key = dic_letters.get)
+   least_common_char = min(dic_letters, key = dic_letters.get)
+
+   return (most_common_char, dic_letters[most_common_char], least_common_char, dic_letters[least_common_char])
 
 """
 8. Does the answer change if we have the numbers from 1 to 100,000,000?
@@ -278,9 +381,16 @@ Notes:
   helped speed it up.
 """
 
-def load_input_bigger():
+def load_input_bigger(N=None, P=None):
     # TODO
-    raise NotImplementedError
+    # Parallelizes data
+    if N is None:
+        N = 10000000
+    if P is None:
+        rdd = sc.parallelize(range(1,N + 1))
+    else:
+        rdd = sc.parallelize(range(1,N + 1), P)
+    return rdd
 
 def q8_a():
     # version of Q6
@@ -288,7 +398,8 @@ def q8_a():
     # Don't re-implemented the q6 logic.
     # Output: a tuple (most common digit, most common frequency, least common digit, least common frequency)
     # TODO
-    raise NotImplementedError
+    rdd = load_input_bigger(10000000, 8)
+    return q6(rdd)
 
 def q8_b():
     # version of Q7
@@ -296,7 +407,8 @@ def q8_b():
     # Don't re-implemented the q6 logic.
     # Output: a tulpe (most common char, most common frequency, least common char, least common frequency)
     # TODO
-    raise NotImplementedError
+    rdd = load_input_bigger(10000000, 8)
+    return q7(rdd)
 
 """
 Discussion questions
@@ -304,14 +416,19 @@ Discussion questions
 9. State what types you used for k1, v1, k2, and v2 for your Q6 and Q7 pipelines.
 
 === ANSWER Q9 BELOW ===
-
+For Q6 I used: k1 = None, v1 = int (the original number from the rdd), k2 = strings of the digits, v2 = integer which adds up all the digits
+that are the same
+For Q7 I used k1 = None, v1 = string which is the english word of the numbers in rdd, k2 = string which makes each letter of the english word a key,
+and v2 = integer that then adds up all of the other same letters
 === END OF Q9 ANSWER ===
 
 10. Do you think it would be possible to compute the above using only the
 "simplified" MapReduce we saw in class? Why or why not?
 
 === ANSWER Q10 BELOW ===
-
+Yes, you can compute the above using only the "simplified" MapReduce we saw in class. The only problem with this is that (L1: map stage) 
+it will produce exactly one output row which would then make it difficult to filter and makes it inefficient. In L2: reduce stage, we would also end
+up with a single answer which would make it difficult if we wanted a more than one value as output.
 === END OF Q10 ANSWER ===
 """
 
@@ -334,7 +451,14 @@ def q11(rdd):
     # Input: the RDD from Q4
     # Output: the result of the pipeline, a set of (key, value) pairs
     # TODO
-    raise NotImplementedError
+
+    #Maps the data
+    mapped_data = general_map(rdd.map(lambda x: (None, x)), lambda k, v: [])
+
+    #Reduces the data to give the value
+    reduced_data = general_reduce(mapped_data, lambda k, val: val)
+
+    return set(reduced_data.collect())
 
 """
 12. What happened? Explain below.
@@ -342,7 +466,9 @@ Does this depend on anything specific about how
 we chose to define general_reduce?
 
 === ANSWER Q12 BELOW ===
-
+So, I got an output that says set(). It does not really depend on anything specific about how we chose to define general_reduce, but on
+how we mapped the data out like where our mapper returned an empty list for each input. This produces the edge case where there is no output for the
+reduce stage.
 === END OF Q12 ANSWER ===
 
 13. Lastly, we will explore a second edge case, where the reduce stage can
@@ -355,7 +481,8 @@ Why do you imagine it could be the case that the output of the reduce stage
 is different depending on the order of the input?
 
 === ANSWER Q13 BELOW ===
-
+I think it is because it groups all values by key and then reduces by the function f. It is like first come first serve type of deal since spark splits
+the data into partitions which will then be combined in different orders each time.
 === END OF Q13 ANSWER ===
 
 14.
@@ -370,7 +497,15 @@ def q14(rdd):
     # Input: the RDD from Q4
     # Output: the result of the pipeline, a set of (key, value) pairs
     # TODO
-    raise NotImplementedError
+
+    #Map the data to key-value pairing
+    mapped_data = general_map(rdd.map(lambda x: (1, x)), lambda k, v: [(k, v)])
+
+    #Reduce the data by summing for the keys 0, 1, and 2
+    reduced_data = general_reduce(mapped_data, lambda a, b: a - b)
+
+    #Returns a set of (integer, integer)
+    return set(reduced_data.collect())
 
 """
 15.
@@ -380,7 +515,8 @@ Does it exhibit nondeterministic behavior on different runs?
 including partitioning.
 
 === ANSWER Q15 BELOW ===
-
+I ran my pipeline multiple times and got the same values each time thus not showcasing a nondeterministic behavior. The set I got multiple times
+is (1, 496079187472).
 === END OF Q15 ANSWER ===
 
 16.
@@ -393,17 +529,20 @@ Write three functions, a, b, and c that use different levels of parallelism.
 def q16_a():
     # For this one, create the RDD yourself. Choose the number of partitions.
     # TODO
-    raise NotImplementedError
+    rdd_eight = sc.parallelize(range(1, 500001), 8)
+    return q14(rdd_eight)
 
 def q16_b():
     # For this one, create the RDD yourself. Choose the number of partitions.
     # TODO
-    raise NotImplementedError
+    rdd_twelve = sc.parallelize(range(1, 500001), 12)
+    return q14(rdd_twelve)
 
 def q16_c():
     # For this one, create the RDD yourself. Choose the number of partitions.
     # TODO
-    raise NotImplementedError
+    rdd_sixteen = sc.parallelize(range(1, 500001), 16)
+    return q14(rdd_sixteen)
 
 """
 Discussion questions
@@ -411,14 +550,17 @@ Discussion questions
 17. Was the answer different for the different levels of parallelism?
 
 === ANSWER Q17 BELOW ===
-
+Using the same rdd with all of my q16 with different levels of parallelism I do see different answers on each one. This is probably because
+I use different number of partitions which changes the order in which the values enter the reducer, thus affecting the output, showing a
+nondeterministic behavior.
 === END OF Q17 ANSWER ===
 
 18. Do you think this would be a serious problem if this occured on a real-world pipeline?
 Explain why or why not.
 
 === ANSWER Q18 BELOW ===
-
+This would cause a serious problem if this occured on a real-world pipeline because the user might've wanted the opposite of a nondeterministic
+behavior. With inconsistent output it may result in different events where conclusion on a data might not be accurate.
 === END OF Q18 ANSWER ===
 
 ===== Q19-20: Further reading =====
@@ -431,7 +573,10 @@ https://www.microsoft.com/en-us/research/wp-content/uploads/2016/02/icsecomp14se
 Take a look at the paper. What is one sentence you found interesting?
 
 === ANSWER Q19 BELOW ===
-
+I found this sentence interesting, "Between the mappers and reducers is a data shuffling stage where rows with the same reduce key are 
+grouped together in to a sequence by a merge-sort." The reason I found this interesting is because I associated this with our previous question of
+nondeterministic behavior. If the shuffling occurs each time, then the order in which the data comes in will change the output during the reduce
+stage unless the output is the same each time.
 === END OF Q19 ANSWER ===
 
 20.
@@ -443,7 +588,28 @@ it possible to implement the example, and "False" if it was not.
 
 def q20():
     # TODO
-    raise NotImplementedError
+    #I did the example from figure 2 where the reduce function sums up the second column in all rows in a group
+
+    #Maping each input x to make a row with group key and use general_map to emit each row as (group_key, row)
+    
+    #Creating the key and row
+    rdd = sc.parallelize(range(1, 100001)) #This is just an example data
+    keyed_data = rdd.map(lambda x: (x % 5, (x % 5, x)))
+
+    general_mapped = general_map(keyed_data, lambda key, row: [(key, row)])
+
+    #Reducer to sum up the second column
+    def reducer_helper_add(key, rows):
+        total = 0
+        #Goes through each row that the key is associated with as row is a tuple
+        for row in rows:
+            #This adds the second column values together, not the first which would be row[0]
+            total += row[1]
+        return total
+    
+    reduced_data = general_reduce(general_mapped, reducer_helper_add)
+    return True
+
 
 """
 That's it for Part 1!

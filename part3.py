@@ -48,6 +48,15 @@ You should not modify the existing PART_1_PIPELINE.
 You may either delete the parts of the code that save the output file, or change these to a different output file like part1-answers-temp.txt.
 """
 
+# Spark boilerplate (remember to always add this at the top of any Spark file)
+import pyspark
+from pyspark.sql import SparkSession
+spark = SparkSession.builder.appName("DataflowGraphExample").getOrCreate()
+sc = spark.sparkContext
+
+# Additional imports
+import pytest
+
 def PART_1_PIPELINE_PARAMETRIC(N, P):
     """
     TODO: Follow the same logic as PART_1_PIPELINE
@@ -58,7 +67,21 @@ def PART_1_PIPELINE_PARAMETRIC(N, P):
     - load_input_bigger (including q8_a and q8_b) should use an input of size N.
     - both of these should return an RDD with level of parallelism P (number of partitions = P).
     """
-    raise NotImplementedError
+    def load_input():
+        rdd = sc.parallelize(range(1,N + 1), P)
+        return rdd
+    def load_input_bigger():
+        rdd = sc.parallelize(range(1,N + 1), P)
+        return rdd
+    
+    rdd = load_input()
+    rdd_bigger = load_input_bigger()
+
+    rdd_count = rdd.count()
+    rdd_bigger_count = rdd_bigger.count()
+
+    return rdd_count, rdd_bigger_count
+
 
 """
 === Coding part 2: measuring the throughput and latency ===
@@ -114,9 +137,139 @@ That is why we are assuming the latency will just be the running time of the ent
 - Please set `NUM_RUNS` to `1` if you haven't already. Note that this will make the values for low numbers (like `N=1`, `N=10`, and `N=100`) vary quite unpredictably.
 """
 
+import time
+import os
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+
+os.makedirs("output", exist_ok=True)
+
 # Copy in ThroughputHelper and LatencyHelper
+class ThroughputHelper:
+    def __init__(self):
+        # Initialize the object.
+        # Pipelines: a list of functions, where each function
+        # can be run on no arguments.
+        # (like: def f(): ... )
+        self.pipelines = []
+
+        # Pipeline names
+        # A list of names for each pipeline
+        self.names = []
+
+        # Pipeline input sizes
+        self.sizes = []
+
+        # Pipeline throughputs
+        # This is set to None, but will be set to a list after throughputs
+        # are calculated.
+        self.throughputs = None
+
+    def add_pipeline(self, name, size, func):
+        self.names.append(name)
+        self.sizes.append(size)
+        self.pipelines.append(func)
+
+
+    def compare_throughput(self):
+        # Measure the throughput of all pipelines
+        # and store it in a list in self.throughputs.
+        # Make sure to use the NUM_RUNS variable.
+        # Also, return the resulting list of throughputs,
+        # in **number of items per second.**
+        self.throughputs = []
+        for i in range(len(self.pipelines)):
+            func = self.pipelines[i]
+            size = self.sizes[i]
+
+            start_time = time.perf_counter()
+            for _ in range(NUM_RUNS):
+                func()
+            end_time = time.perf_counter()
+
+            total_time = end_time - start_time
+            epsilon = 1e-8
+            throughput = (size * NUM_RUNS) / (total_time + epsilon)
+            self.throughputs.append(throughput)
+        return self.throughputs
+    def generate_plot_throughput(self, filename):
+        # Generate a plot for throughput using matplotlib.
+        # You can use any plot you like, but a bar chart probably makes
+        # the most sense.
+        # Make sure you include a legend.
+        # Save the result in the filename provided.
+        import matplotlib.pyplot as plt
+        plt.figure(figsize=(10, 6))
+        plt.bar(self.names, self.throughputs)
+        plt.ylabel('Throughput (items/second)')
+        plt.title('Pipeline Throughput Comparison')
+        plt.legend()
+        plt.xticks(rotation=45)
+        plt.tight_layout()
+        plt.savefig(filename)
+
+class LatencyHelper:
+    def __init__(self):
+        # Initialize the object.
+        # Pipelines: a list of functions, where each function
+        # can be run on no arguments.
+        # (like: def f(): ... )
+        self.pipelines = []
+
+        # Pipeline names
+        # A list of names for each pipeline
+        self.names = []
+
+        # Pipeline latencies
+        # This is set to None, but will be set to a list after latencies
+        # are calculated.
+        self.latencies = None
+
+    def add_pipeline(self, name, func):
+        self.names.append(name)
+        self.pipelines.append(func)
+
+    def compare_latency(self):
+        # Measure the latency of all pipelines
+        # and store it in a list in self.latencies.
+        # Also, return the resulting list of latencies,
+        # in **milliseconds.**
+        self.latencies = []
+        for i in self.pipelines:
+
+            start_time = time.perf_counter()
+            for _ in range(NUM_RUNS):
+                i()
+            end_time = time.perf_counter()
+
+            total_time = end_time - start_time
+            epsilon = 1e-8
+            average_latency = ((total_time / NUM_RUNS) + epsilon) * 1000  # Convert to milliseconds
+            self.latencies.append(average_latency)
+        return self.latencies
+    
+    def generate_plot_latency(self, filename):
+        # Generate a plot for latency using matplotlib.
+        # You can use any plot you like, but a bar chart probably makes
+        # the most sense.
+        # Make sure you include a legend.
+        # Save the result in the filename provided.
+        import matplotlib.pyplot as plt
+        plt.figure(figsize=(10, 6))
+        plt.bar(self.names, self.latencies)
+        plt.ylabel('Latency (milliseconds)')
+        plt.title('Pipeline Latency Comparison')
+        plt.legend()
+        plt.xticks(rotation=45)
+        plt.tight_layout()
+        #plt.show()
+        plt.savefig(filename)
+
+
 
 # Insert code to generate plots here as needed
+    #I added my generated plots code in my class for each one
 
 """
 === Reflection part ===
@@ -175,8 +328,68 @@ Running python3 part3.py should work and should re-generate all of your plots in
 === Entrypoint ===
 """
 
-if __name__ == '__main__':
-    print("Complete part 3. Please use the main function below to generate your plots so that they are regenerated whenever the code is run:")
+reflection_answers = """
+1. Given the dataflow graph, we would expect the throughput to get better with an increase of partition because with more partitions PySpark is able to process the data in parallel faster. 
+For example, throughput for N = 10,000,000 and P = 8 with a total time of like maybe 50 seconds then throughput would be 200,000 items per second. 
+It is acknowledged that as input increases the time it takes to process will also increase.
+As for latency, as the number of inputs increases latency also increases, but as the number of partitions increases then latency decreases due to the work splitting across the parallel tasks. 
+So, if we have N = 10,000,000 and P = 8 then each parition will handle fewer number of inputs than just 1.
 
-    print("[add code here]")
-    # TODO: add code here
+2. Yes, my expectation from part 1 does match the performance I see in the actual measurements. 
+For throughput we can see how as the partitions increase the items per second decreases since the items are being split up more which can be seen when comparing the y-axis max of throughput-1 (800,000) go down in throughput-2 (350,000). 
+As for latency, my graphs are more all over the place and not consistent as latency is high for higher Ns. 
+As partitions increase my latency also increase as the y-axis increase from 4,000 (from latency-1) to 40,000 milliseconds. 
+High throughput is still maintained as the N increases and latency still increases as input also increases.
+
+3. I think that overheads have some influences in the differences between theoretical model and the actual runtime, which can be seen by my latency that is everywhere and unexpectly increases in time for smaller Ns as partitions increases. 
+Some overheads that wasn't accounted for is for when smaller Ns, like N = 1, being partitioned to like P = 8 could cause some overhead-related time issues resulting in my graphs. 
+In theory as you increase parallelism you are also increasing throughput and decreases latency as more data can be processed at the same time, but we didn't think to account nondeterministic outputs that may pose as a problem. 
+Overheads is really influences smaller N inputs, but doesn't affect larger N inputs. 
+Again though, sometimes the theoretical model doesn't match actual time as there could be other factors outside of data shuffling, overhead, etc. that affects the changes.
+"""
+
+# Save the reflection to a text file
+output_path = "output/part3-reflection.txt"
+with open(output_path, "w") as f:
+    f.write(reflection_answers)
+
+print(f"Reflection saved to {output_path}")
+
+# if __name__ == '__main__':
+#     print("Complete part 3. Please use the main function below to generate your plots so that they are regenerated whenever the code is run:")
+
+#     print("[add code here]")
+#     # TODO: add code here
+#     levels_parallelism = [1, 2, 4, 8, 16]
+#     input_sizes = [1, 10, 100, 1000, 10000, 100000, 1000000]
+#     NUM_RUNS = 1
+
+#     # Throughput
+#     for P in levels_parallelism:
+#         throughput_helper = ThroughputHelper()
+#         for N in input_sizes:
+#             def make_pipeline(N=N, P=P):
+#                 def run():
+#                     PART_1_PIPELINE_PARAMETRIC(N, P)
+#                 return run
+#             throughput_helper.add_pipeline(f"Throughput When N = {N}", 2 * N, make_pipeline())
+
+#         throughputs_outcomes = throughput_helper.compare_throughput()
+#         file_name = f"output/part3-throughput-{P}.png"
+#         throughput_helper.generate_plot_throughput(file_name)
+#         print(f"Throughput plot saved: {file_name}")
+
+#     # Latency
+#     for P in levels_parallelism:
+#         latency_helper = LatencyHelper()
+#         for N in input_sizes:
+#             def make_latency_pipeline(N=N, P=P):
+#                 def run():
+#                     PART_1_PIPELINE_PARAMETRIC(N, P)
+#                 return run
+#             latency_helper.add_pipeline(f"Latency When N = {N}", make_latency_pipeline())
+
+#         latency_outcomes = latency_helper.compare_latency()
+#         file_name = f"output/part3-latency-{P}.png"
+#         latency_helper.generate_plot_latency(file_name)
+#         print(f"Latency plot saved: {file_name}")

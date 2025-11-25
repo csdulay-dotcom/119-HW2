@@ -1,0 +1,18 @@
+
+1. Given the dataflow graph, we would expect the throughput to get better with an increase of partition because with more partitions PySpark is able to process the data in parallel faster. 
+For example, throughput for N = 10,000,000 and P = 8 with a total time of like maybe 50 seconds then throughput would be 200,000 items per second. 
+It is acknowledged that as input increases the time it takes to process will also increase.
+As for latency, as the number of inputs increases latency also increases, but as the number of partitions increases then latency decreases due to the work splitting across the parallel tasks. 
+So, if we have N = 10,000,000 and P = 8 then each parition will handle fewer number of inputs than just 1.
+
+2. Yes, my expectation from part 1 does match the performance I see in the actual measurements. 
+For throughput we can see how as the partitions increase the items per second decreases since the items are being split up more which can be seen when comparing the y-axis max of throughput-1 (800,000) go down in throughput-2 (350,000). 
+As for latency, my graphs are more all over the place and not consistent as latency is high for higher Ns. 
+As partitions increase my latency also increase as the y-axis increase from 4,000 (from latency-1) to 40,000 milliseconds. 
+High throughput is still maintained as the N increases and latency still increases as input also increases.
+
+3. I think that overheads have some influences in the differences between theoretical model and the actual runtime, which can be seen by my latency that is everywhere and unexpectly increases in time for smaller Ns as partitions increases. 
+Some overheads that wasn't accounted for is for when smaller Ns, like N = 1, being partitioned to like P = 8 could cause some overhead-related time issues resulting in my graphs. 
+In theory as you increase parallelism you are also increasing throughput and decreases latency as more data can be processed at the same time, but we didn't think to account nondeterministic outputs that may pose as a problem. 
+Overheads is really influences smaller N inputs, but doesn't affect larger N inputs. 
+Again though, sometimes the theoretical model doesn't match actual time as there could be other factors outside of data shuffling, overhead, etc. that affects the changes.
